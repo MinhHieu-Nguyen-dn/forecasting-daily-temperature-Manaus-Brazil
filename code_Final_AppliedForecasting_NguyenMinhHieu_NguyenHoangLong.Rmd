@@ -1,0 +1,325 @@
+---
+title: "R Code - Basic forecasting of average daily temperature in Manaus city, Brazil"
+subtitle: "Applied Forecasting course, VNUK Institute for Research and Executive Education"
+author: "Hieu Ng. Minh, Long Ng. Hoang"
+date: "February 2023"
+output: html_notebook
+---
+
+Install necessary packages:
+```{r include=FALSE}
+#install.packages('fpp2')
+#install.packages('tidyverse')
+#install.packages('GGally')
+```
+Load packages:
+```{r include=FALSE}
+#library(fpp2)
+#library(tidyverse)
+#library(GGally)
+```
+
+Read (input) data for training:
+```{r}
+data_to2018 = read.csv(file = 'data_pre-processed/data_daily_avg_from2000_365_withdate_2000_to_2018.csv')
+rownames(data_to2018) = data_to2018$Date
+data_to2018$Date = NULL
+str(data_to2018)
+summary(data_to2018)
+```
+Convert train data columns to time-series objects:
+```{r}
+data_to2018_ts = ts(data_to2018, start=c(2000, 1), frequency = 365)
+```
+
+Read data for testing:
+```{r}
+data_2019 = read.csv(file = 'data_pre-processed/data_daily_avg_from2000_365_withdate_2019.csv')
+rownames(data_2019) = data_2019$Date
+data_2019$Date = NULL
+str(data_2019)
+summary(data_2019)
+```
+Convert test data columns to time-series objects:
+```{r}
+data_2019_ts = ts(data_2019, start=c(2019, 1), frequency = 365)
+```
+
+
+Perform Exploratory Data Analysis (EDA) with the train dataset:
+
+Plot the data:
+```{r}
+autoplot(data_to2018_ts, facets = T) +
+  xlab('Time (from 2000 to 2018)') + ylab('') +
+  ggtitle('Daily average weather components from 2000 to 2018 in Manaus city, Brazil')
+```
+
+Seasonal plot of temperature only:
+```{r}
+ggseasonplot(data_to2018_ts[,'Avg_temp'], year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Celsius degree") +
+  ggtitle("Seasonal plot: average daily temperature in Manaus, Brazil from 2000 to 2018")
+```
+
+Scatterplot matrices to explore the correlation (relationship) between weather components:
+```{r}
+GGally::ggpairs(data_to2018)
+```
+
+Lag plots
+```{r}
+gglagplot(data_to2018_ts[,'Avg_temp'])
+```
+
+Autocorrelation:
+```{r}
+ggAcf(data_to2018_ts[,'Avg_temp']) +
+  ggtitle('ACF graph of average daily temperature in Manaus, Brazil from 2000 to 2018')
+```
+
+Data decomposition:
+
+Classical additive decomposition:
+```{r}
+data_to2018_ts[,'Avg_temp'] %>% decompose(type="additive") %>%
+  autoplot() + xlab("Year") +
+  ggtitle("Classical additive decomposition of average daily temperature in Manaus")
+```
+
+STL decomposition:
+```{r}
+temp_to2018_tsstl = mstl(data_to2018_ts[,'Avg_temp'])
+temp_to2018_tsstl %>% autoplot() +
+  ggtitle("STL decomposition of average daily temperature in Manaus")
+```
+FORECASTING METHODS/MODELS AND RESULTS
+```{r}
+temp_to2018_ts = data_to2018_ts[,'Avg_temp']
+temp_2019_ts = data_2019_ts[,'Avg_temp']
+```
+
+
+Bench marking methods
+
+Average
+
+```{r}
+autoplot(temp_to2018_ts) +
+  autolayer(temp_2019_ts, series = 'Real data 2019') +
+  autolayer(meanf(temp_to2018_ts, h=365), series = 'Mean', PI=F) +
+  ggtitle("Forecasting with Average method for 2019 daily average temperature") +
+  xlab("Time") + ylab("Celsius degree") +
+  guides(colour=guide_legend(title = "Method"))
+```
+```{r}
+checkresiduals(meanf(temp_to2018_ts, h=365))
+accuracy(meanf(temp_to2018_ts, h=365))
+```
+
+
+Naive
+```{r}
+autoplot(temp_to2018_ts) +
+  autolayer(temp_2019_ts, series = 'Real data 2019') +
+  autolayer(naive(temp_to2018_ts, h=365), series = 'Naive', PI=F) +
+  ggtitle("Forecasting with Naive method for 2019 daily average temperature") +
+  xlab("Time") + ylab("Celsius degree") +
+  guides(colour=guide_legend(title = "Method"))
+```
+```{r}
+checkresiduals(naive(temp_to2018_ts, h=365))
+accuracy(naive(temp_to2018_ts, h=365))
+```
+
+Seasonal naive
+```{r}
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(temp_2019_ts, series = 'Real data 2019') +
+  autolayer(snaive(temp_to2018_ts, h=365), series = 'Seasonal naive', PI=F) +
+  ggtitle("Forecasting with Seasonal naive method for 2019 daily average temperature") +
+  xlab("Time") + ylab("Celsius degree") +
+  guides(colour=guide_legend(title = "Method"))
+```
+```{r}
+checkresiduals(snaive(temp_to2018_ts, h=365))
+accuracy(snaive(temp_to2018_ts, h=365))
+```
+
+Drift
+```{r}
+autoplot(temp_to2018_ts) +
+  autolayer(temp_2019_ts, series = 'Real data 2019') +
+  autolayer(rwf(temp_to2018_ts, drift=T, h=365), series = 'Drift', PI=F) +
+  ggtitle("Forecasting with Drift method for 2019 daily average temperature") +
+  xlab("Time") + ylab("Celsius degree") +
+  guides(colour=guide_legend(title = "Method"))
+```
+```{r}
+checkresiduals(rwf(temp_to2018_ts, drift=T, h=365))
+accuracy(rwf(temp_to2018_ts, drift=T, h=365))
+```
+
+Regression method
+```{r}
+fit.reg = tslm(Avg_temp ~ Humidity + Atmospheric_pressure + Wind_speed + Cloudiness, data = data_to2018_ts)
+fit.reg
+```
+```{r}
+fcast.reg = forecast(fit.reg, newdata = data_2019[,c("Humidity", "Atmospheric_pressure", "Wind_speed", "Cloudiness")])
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(fcast.reg, PI=T, series="Regression model forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with Regression model for 2019 daily average temperature") +
+  ylab("Celsius degree")
+```
+```{r}
+checkresiduals(fcast.reg)
+accuracy(fcast.reg)
+```
+```{r}
+fcast.reg = forecast(fit.reg, newdata = data_2019[,c("Humidity", "Atmospheric_pressure", "Wind_speed", "Cloudiness")])
+autoplot(temp_to2018_ts) +
+  autolayer(fcast.reg, PI=T, series="Regression model forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with Regression model for 2019 daily average temperature (full)") +
+  ylab("Celsius degree")
+```
+
+
+
+Decomposition with STL
+```{r}
+fcast.stl_ets = stlf(temp_to2018_ts, h=365)
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(fcast.stl, PI=T, series="STL decomposition forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with STL + ETS approach for 2019 daily average temperature") +
+  ylab("Celsius degree")
+```
+
+```{r}
+checkresiduals(fcast.stl_ets)
+accuracy(fcast.stl_ets)
+```
+
+```{r}
+fcast.stl = stlf(temp_to2018_ts, method='naive', h=365)
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(fcast.stl, PI=T, series="STL decomposition forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with STL + Random walk for 2019 daily average temperature") +
+  ylab("Celsius degree")
+```
+
+```{r}
+checkresiduals(fcast.stl)
+accuracy(fcast.stl)
+```
+
+ETS
+```{r}
+fit.ets = ets(temp_to2018_ts)
+summary(fit.ets)
+```
+
+```{r}
+autoplot(fit.ets)
+```
+
+```{r}
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(forecast(fit.ets, h=365), PI=T, series="ETS(M,N,N) forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with ETS(M,N,N) for 2019 daily average temperature") +
+  ylab("Celsius degree")
+```
+
+```{r}
+checkresiduals(forecast(fit.ets, h=365))
+accuracy(forecast(fit.ets, h=365))
+```
+Holt-Winters' seasonal method
+```{r}
+fit.hw = hw(temp_to2018_ts, seasonal="additive")
+fit.hw
+```
+Holt-Winters' damped method
+```{r}
+fit.hw = hw(temp_to2018_ts, damped=T, seasonal="additive")
+fit.hw
+```
+
+
+ARIMA
+
+```{r}
+fit.arima = auto.arima(temp_to2018_ts)
+fit.arima
+```
+
+```{r}
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(forecast(fit.arima, h=365), PI=T, series="ARIMA(3,1,3) forecast") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with ARIMA(3,1,3) for 2019 daily average temperature") +
+  ylab("Celsius degree")
+```
+
+```{r}
+checkresiduals(forecast(fit.arima, h=365))
+accuracy(forecast(fit.arima, h=365))
+```
+
+
+Dynamic regression model with ARIMA errors
+```{r}
+fit.dreg = auto.arima(temp_to2018_ts, xreg=data_to2018_ts[,c("Humidity", "Atmospheric_pressure", "Wind_speed", "Cloudiness")])
+fit.dreg
+```
+
+```{r}
+fcast.dreg = forecast(fit.dreg, xreg=data_2019_ts[,c("Humidity", "Atmospheric_pressure", "Wind_speed", "Cloudiness")])
+autoplot(window(temp_to2018_ts, start=c(2017,1))) +
+  autolayer(fcast.dreg, PI=T, series="ARIMA(5,1,1) errors") +
+  autolayer(temp_2019_ts, series="Real 2019 data") +
+  guides(colour=guide_legend(title="")) +
+  ggtitle("Forecasting with Dynamic Regression model with ARIMA errors for 2019") +
+  ylab("Celsius degree")
+```
+
+```{r}
+checkresiduals(fcast.dreg)
+accuracy(fcast.dreg)
+```
+
+Dynamic harmonic regression
+```{r}
+#install.packages("gridExtra")
+#library(gridExtra)
+```
+
+
+```{r}
+plots <- list()
+
+for (i in seq(6)) {
+  fit <- auto.arima(temp_to2018_ts, xreg = fourier(temp_to2018_ts, K = i),
+    seasonal = FALSE, lambda = 0)
+  
+  plots[[i]] <- autoplot(forecast(fit,
+      xreg=fourier(temp_to2018_ts, K=i, h=365))) +
+    xlab(paste("K=",i,"   AICC=",round(fit[["aicc"]],2))) +
+    ylab("") +
+    ggtitle(as.character(fit))
+}
+gridExtra::grid.arrange(
+  plots[[1]],plots[[2]],plots[[3]],
+  plots[[4]],plots[[5]],plots[[6]], nrow=3)
+```

@@ -1,0 +1,133 @@
+---
+title: "test_model_anhLong"
+author: "Nguyen Minh Hieu - 20DS - 20040008"
+#date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages("tensorflow")
+install.packages("rlang")
+install.packages("devtools")
+library(reticulate)
+install.packages("sf")
+library(remotes)
+install_github("r-spatial/sf")
+```
+
+```{r}
+ssh <- suppressPackageStartupMessages
+ssh(library(timeSeries))
+ssh(library(tseries))
+ssh(library(aTSA))
+ssh(library(forecast))
+ssh(library(rugarch))
+ssh(library(ModelMetrics))
+ssh(library(keras))
+```
+
+```{r}
+
+data(USDCHF)
+length(USDCHF)
+```
+
+```{r}
+data(USDCHF)
+data <- ts(USDCHF, frequency = 365)
+plot(data)
+```
+
+```{r}
+adf.test(data)
+pp.test(data )
+```
+
+```{r}
+acf(data)
+```
+
+```{r}
+pacf(data)
+```
+
+```{r}
+data_test <- data[(length(data)-99):length(data)]
+data_train <- data[1:(length(data)-99-1)]
+```
+
+```{r}
+maxlen <- 7
+exch_matrix<- matrix(0, nrow = length(data_train)-maxlen-1, ncol = maxlen+1)
+```
+
+
+```{r}
+for(i in 1:(length(data_train)-maxlen-1)){
+  exch_matrix[i,] <- data_train[i:(i+maxlen)]
+}
+head(exch_matrix)
+```
+
+```{r}
+x_train <- exch_matrix[, -ncol(exch_matrix)]
+y_train <- exch_matrix[, ncol(exch_matrix)]
+```
+
+```{r}
+dim(x_train)
+```
+
+
+```{r}
+x_train <- array_reshape(x_train, dim = c((length(data_train)-maxlen-1), maxlen, 1))
+dim(x_train)
+```
+
+```{r}
+# Remove the package after installation
+unlink("devtools.zip")
+require(devtools)
+library("keras")
+devtools::install_github("rstudio/tensorflow",force = TRUE)
+#install.packages("keras")
+#install.packages("Anaconda")
+install_keras()
+model <- keras_model_sequential()
+model %>% 
+  layer_dense(input_shape = dim(x_train)[-1], units=maxlen) %>% 
+  layer_simple_rnn(units=10) %>% 
+  layer_dense(units = 1)
+summary(model)
+```
+
+```{r}
+model %>% compile(
+  loss = "mse",
+  optimizer= "adam",
+  metric = "mae" 
+)
+```
+
+```{r}
+maxlen <- 7
+exch_matrix2<- matrix(0, nrow = length(data)-maxlen-1, ncol = maxlen+1) 
+for(i in 1:(length(data)-maxlen-1)){
+  exch_matrix2[i,] <- data[i:(i+maxlen)]
+}
+x_train2 <- exch_matrix2[, -ncol(exch_matrix2)]
+y_train2 <- exch_matrix2[, ncol(exch_matrix2)]
+x_train2 <- array_reshape(x_train2, dim = c((length(data)-maxlen-1), maxlen, 1))
+pred <- rnn_model %>% predict(x_train2)
+df_eval_rnn <- tibble::tibble(y_rnn=y_train2[(length(y_train2)-99):length(y_train2)],
+                          yhat_rnn=as.vector(pred)[(length(y_train2)-99):length(y_train2)])
+```
+
+
+
+
+
